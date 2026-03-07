@@ -1,0 +1,44 @@
+{
+    "manifest_version": 3,
+    "name": "Used Car Scanner",
+    "version": "1.0",
+    "description": "Scans used car listings and scores them based on pros, cons, and red flags.",
+    "permissions": [
+        "storage",
+        "activeTab",
+        "scripting",
+        "contextMenus"
+    ],
+    "host_permissions": [
+        "http://localhost:3001/*",
+        "https://*.facebook.com/marketplace/*",
+        "https://*.craigslist.org/*",
+        "https://*.autotrader.com/*",
+        "https://*.autotrader.ca/*",
+        "https://*.autotrader.co.uk/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://*.facebook.com/marketplace/*",
+                "https://*.craigslist.org/*",
+                "https://*.autotrader.com/*",
+                "https://*.autotrader.ca/*",
+                "https://*.autotrader.co.uk/*"
+            ],
+            "js": [
+                "content.js",
+                "content-bridge.js"
+            ],
+            "css": [
+                "content.css"
+            ]
+        }
+    ],
+    "action": {
+        "default_title": "Used Car Scanner (Open UI)"
+    }
+}

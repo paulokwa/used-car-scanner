@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Used Car Scanner - Dashboard</title>
+  <link rel="stylesheet" href="index.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <header class="header">
+      <div class="header-content">
+        <h1>Used Car Scanner</h1>
+        <div class="header-controls">
+          <button id="theme-toggle" class="btn btn-icon">🌓</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <div class="sidebar">
+        <h3>Filters & Presets</h3>
+        <div class="presets">
+          <button class="preset-btn active" data-filter="all">All Cars</button>
+          <button class="preset-btn" data-filter="highly-rated">Highly Rated (>80)</button>
+          <button class="preset-btn" data-filter="no-red-flags">No Red Flags</button>
+          <button class="preset-btn" data-filter="maintenance-kings">Maintenance Kings</button>
+        </div>
+        
+        <div class="stats-panel">
+          <h4>Stats</h4>
+          <p>Scanned Cars: <span id="stat-total">0</span></p>
+          <p>Avoid At All Costs: <span id="stat-avoid" class="text-danger">0</span></p>
+        </div>
+      </div>
+
+      <div class="cars-grid" id="cars-grid">
+        <!-- Car cards will be injected here -->
+        <div class="loading">Loading scanned cars...</div>
+      </div>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
