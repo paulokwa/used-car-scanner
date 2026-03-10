@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
@@ -122,8 +122,7 @@ function scanText(text) {
             result.redFlags.push(match[0]);
         }
     });
-
-    if (result.redFlags.length > 0) {
+        if (result.redFlags.length > 0) {
         // If there are red flags, base score plunges to 10 max
         result.score = Math.min(result.score, 10) - (result.redFlags.length * 10);
         if (result.score < 0) result.score = 0;
@@ -227,39 +226,165 @@ app.post('/api/scan-url', async (req, res) => {
             console.log("Navigation timeout caught, attempting to extract DOM anyway...");
         }
 
+        await page.waitForSelector('#__NEXT_DATA__', { timeout: 10000 }).catch(() => { });
+        const cookieSelectors = [
+            'button[data-testid="close-button"]',
+            'button[data-testid="cookie-accept-button"]',
+            'text=Accept',
+            'text=ACCEPT'
+        ];
+        for (const selector of cookieSelectors) {
+            try {
+                const locator = page.locator(selector).first();
+                if (await locator.count()) {
+                    await locator.click({ timeout: 1000 });
+                    await page.waitForTimeout(500);
+                    break;
+                }
+            } catch (err) {
+                // ignore inability to click cookie banners
+            }
+        }
+
+        await page.evaluate(() => {
+            window.scrollTo(0, document.body.scrollHeight);
+        }).catch(() => { });
         await page.waitForTimeout(4000); // Wait for SPA to hydrate
 
         // Extract data
         const carData = await page.evaluate(() => {
-            let description = "";
-            let title = document.title || "Unknown Car";
-            let price = "Unknown price";
-            let mileage = "Unknown mileage";
+            const cleanup = (text) => {
+                if (!text || typeof text !== 'string') return '';
+                return text.replace(/\s+/g, ' ').trim();
+            };
+
+            const decodeHtml = (html) => {
+                if (!html) return '';
+                const tmp = document.createElement('div');
+                tmp.innerHTML = html;
+                return cleanup(tmp.innerText);
+            };
+
+            const getNextListing = () => {
+                const script = document.getElementById('__NEXT_DATA__');
+                if (!script) return null;
+                try {
+                    const data = JSON.parse(script.textContent);
+                    return data?.props?.pageProps?.listingDetails || data?.props?.pageProps?.listing || null;
+                } catch (err) {
+                    return null;
+                }
+            };
+
+            const pickText = (selectors, minLength = 25) => {
+                for (const selector of selectors) {
+                    const el = document.querySelector(selector);
+                    if (el) {
+                        const text = cleanup(el.innerText);
+                        if (text.length >= minLength) {
+                            return text;
+                        }
+                    }
+                }
+                return '';
+            };
+
+            const listingDetails = getNextListing();
 
             const url = window.location.href;
-            if (url.includes('autotrader')) {
-                const titleEl = document.querySelector('h1, h2');
-                if (titleEl) title = titleEl.innerText;
-                const priceEl = Array.from(document.querySelectorAll('span, div')).find(el => el.innerText && el.innerText.match(/^\$?[\d,]+$/) && parseInt(el.innerText.replace(/\D/g, '')) > 500);
-                if (priceEl) price = priceEl.innerText;
-                const miEl = Array.from(document.querySelectorAll('span, p, div')).find(el => el.innerText && (el.innerText.toLowerCase().includes('km') || el.innerText.toLowerCase().includes('mile')));
-                if (miEl) mileage = miEl.innerText;
+            let description = '';
 
-                // Best extraction for AutoTrader is the meta tag, avoids SPA loading and cookie banners
-                const metaDesc = document.querySelector('meta[name="description"]');
-                if (metaDesc) {
-                    description = metaDesc.content;
-                } else {
-                    const descEl = document.querySelector('[data-test="description"], #vdp-overview, .description');
-                    if (descEl) description = descEl.innerText;
-                }
-            } else {
-                description = document.body.innerText;
+            if (listingDetails?.description) {
+                description = decodeHtml(listingDetails.description);
             }
+
+            if (!description && url.includes('autotrader')) {
+                description = pickText([
+                    '[data-cy="vehicle-description"]',
+                    '[data-testid="vehicle-description"]',
+                    '[data-test="vehicleDescription"]',
+                    '[data-test="description"]',
+                    '[data-testid="long-text"]',
+                    '[data-cy="description-section"]',
+                    '.VehicleDescription_container__rajO2'
+                ], 60);
+
+                if (!description) {
+                    const paragraphs = Array.from(document.querySelectorAll('section[data-cy="vehicle-description"] p, section[data-cy="description-section"] p'));
+                    const combined = cleanup(paragraphs.map(p => p.innerText).join(' '));
+                    if (combined.length > 60) description = combined;
+                }
+            }
+
+            if (!description) {
+                const mainEl = document.querySelector('main');
+                if (mainEl) {
+                    const mainText = cleanup(mainEl.innerText);
+                    if (mainText.length > 60 && mainText.length < 4000) description = mainText;
+                }
+            }
+
+            if (!description) {
+                const bodyText = cleanup(document.body.innerText);
+                description = bodyText.length > 4000 ? bodyText.slice(0, 4000) : bodyText;
+            }
+
+            const buildTitleFromListing = () => {
+                if (!listingDetails?.vehicle) return '';
+                const parts = [
+                    listingDetails.vehicle.modelYear,
+                    listingDetails.vehicle.make,
+                    listingDetails.vehicle.model,
+                    listingDetails.vehicle.modelVersionInput
+                ].filter(Boolean);
+                return cleanup(parts.join(' '));
+            };
+
+            let title = cleanup(listingDetails?.title) || buildTitleFromListing();
+            if (!title) {
+                const heading = document.querySelector('h1, h2');
+                title = cleanup(heading?.innerText) || cleanup(document.title) || 'Unknown Car';
+            }
+
+            const formatPrice = (price) => {
+                if (!price) return '';
+                return cleanup(price);
+            };
+
+            let price = formatPrice(listingDetails?.prices?.public?.price || listingDetails?.prices?.dealer?.price);
+            if (!price) {
+                const priceEl = document.querySelector('[data-testid="vehicle-price"]') || Array.from(document.querySelectorAll('span, div')).find(el => {
+                    const text = cleanup(el.innerText);
+                    return /^\$[\s\d,]+$/.test(text);
+                });
+        if (priceEl) price = cleanup(priceEl.innerText);
+            }
+            if (!price) price = 'Unknown price';
+
+            const formatMileage = () => {
+                if (typeof listingDetails?.vehicle?.mileageInKm === 'string') {
+                    return cleanup(listingDetails.vehicle.mileageInKm);
+                }
+                if (typeof listingDetails?.vehicle?.mileageInKmRaw === 'number') {
+                    return listingDetails.vehicle.mileageInKmRaw.toLocaleString() + ' km';
+                }
+                const targeted = document.querySelector('[data-testid="vehicleMileage"]');
+                if (targeted) {
+                    const txt = cleanup(targeted.innerText);
+                    if (txt) return txt;
+                }
+                const miEl = Array.from(document.querySelectorAll('span, div')).find(el => {
+                    const text = cleanup(el.innerText).toLowerCase();
+                    return text.includes('km') || text.includes('mile');
+                });
+                return cleanup(miEl?.innerText || '');
+            };
+
+            let mileage = formatMileage();
+            if (!mileage) mileage = 'Unknown mileage';
 
             return { title, price, mileage, description, url };
         });
-
         if (!carData.description || carData.description.length < 20) {
             return res.status(400).json({ success: false, error: 'Failed to extract useful description' });
         }
@@ -340,7 +465,6 @@ app.post('/api/rescan', async (req, res) => {
 
             return { description };
         });
-
         if (pageData.description && pageData.description.length > 20) {
             car.description = pageData.description;
             car.analysis = scanText(car.description);
