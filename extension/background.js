@@ -70,20 +70,47 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
     if (!tab || !tab.id) return;
+    
+    console.log("Context Menu Clicked:", info);
 
-    let action = '';
     if (info.menuItemId === "scan-listing") {
-        action = 'triggerScan';
+        const urlToScan = info.linkUrl;
+        
+        if (urlToScan) {
+            triggerScanProcess(tab.id, urlToScan);
+        } else {
+            // Chrome didn't detect an <a> tag, ask our content script what the mouse is actively hovering over
+            chrome.tabs.sendMessage(tab.id, { action: 'getHoveredLink' }, (response) => {
+                if (chrome.runtime.lastError || !response || !response.url) {
+                    // Fallback to the active page itself
+                    chrome.tabs.sendMessage(tab.id, { action: 'triggerScan' });
+                } else {
+                    triggerScanProcess(tab.id, response.url);
+                }
+            });
+        }
     } else if (info.menuItemId === "scan-page" || info.menuItemId === "scan-search") {
-        action = 'triggerBatchStart';
-    }
-
-    if (action) {
-        chrome.tabs.sendMessage(tab.id, { action: action }, (response) => {
-            // Handle the "receiving end does not exist" error gracefully
-            if (chrome.runtime.lastError) {
-                console.log("Could not establish connection to content script. Make sure you are on a supported car listing page.");
-            }
-        });
+        chrome.tabs.sendMessage(tab.id, { action: 'triggerBatchStart' });
     }
 });
+
+function triggerScanProcess(tabId, urlToScan) {
+    chrome.tabs.sendMessage(tabId, { action: 'showToast', message: 'Scanning link...' });
+            
+    fetch('http://localhost:3001/api/scan-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: urlToScan })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data && data.success) {
+            chrome.tabs.sendMessage(tabId, { action: 'showToast', message: `Scanned! Score: ${data.car.analysis.score}`, success: true });
+        } else {
+            chrome.tabs.sendMessage(tabId, { action: 'showToast', message: `Scan failed`, success: false });
+        }
+    })
+    .catch(err => {
+        chrome.tabs.sendMessage(tabId, { action: 'showToast', message: `Error: ${err.message}`, success: false });
+    });
+}

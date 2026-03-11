@@ -1,3 +1,16 @@
+let lastHoveredLink = "";
+
+// Track mouse movements to capture AutoTrader's custom link elements
+document.addEventListener('mouseover', (e) => {
+    // Traverse up to find the closest clickable container
+    const linkEl = e.target.closest('a, [data-anchor-overlay="true"], .listing-details-link');
+    if (linkEl) {
+        lastHoveredLink = linkEl.href || (linkEl.getAttribute('href') ? new URL(linkEl.getAttribute('href'), document.baseURI).href : window.location.href);
+    } else {
+        lastHoveredLink = window.location.href;
+    }
+}, { passive: true });
+
 // Wait for elements to load
 console.log("Used Car Scanner Content Script Loaded");
 
@@ -105,5 +118,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const btn = document.getElementById('ucs-scan-btn');
         if (btn) btn.click();
         sendResponse({ received: true });
+    } else if (request.action === 'showToast') {
+        let btn = document.getElementById('ucs-scan-btn');
+        if (!btn) {
+            injectScanButton();
+            btn = document.getElementById('ucs-scan-btn');
+        }
+        if (btn) {
+            btn.innerText = request.message;
+            if (request.success === true) {
+                btn.style.backgroundColor = '#10B981';
+            } else if (request.success === false) {
+                btn.style.backgroundColor = '#EF4444';
+            } else {
+                btn.style.backgroundColor = '#6B7280';
+            }
+            if (request.success !== undefined) {
+                setTimeout(() => {
+                    btn.innerText = 'Scan Car';
+                    btn.disabled = false;
+                    btn.style.backgroundColor = '#4F46E5';
+                }, 3000);
+            }
+        }
+        sendResponse({ received: true });
+    } else if (request.action === 'getHoveredLink') {
+        sendResponse({ url: lastHoveredLink });
     }
 });

@@ -10,12 +10,25 @@ const themeToggle = document.getElementById('theme-toggle');
 let allCars = [];
 let currentFilter = 'all';
 
+let lastCarsString = "";
+
 // --- INITIALIZATION ---
 async function init() {
     setupTheme();
     setupEventListeners();
     await loadCars();
+    lastCarsString = JSON.stringify(allCars);
     render();
+    
+    // Auto-refresh the dashboard every 3 seconds gently
+    setInterval(async () => {
+        await loadCars();
+        const currentString = JSON.stringify(allCars);
+        if (currentString !== lastCarsString) {
+            lastCarsString = currentString;
+            render();
+        }
+    }, 3000);
 }
 
 // --- DATA FETCHING ---
