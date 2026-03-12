@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
@@ -215,7 +215,8 @@ app.post('/api/scan-url', async (req, res) => {
 
     let browser;
     try {
-        console.log(`Batch scanning ${url}...`);
+        console.log(`\n\n=== NEW BATCH SCAN REQ ===`);
+        console.log(`URL: ${url}`);
         browser = await chromium.launch({ headless: true });
         const page = await browser.newPage();
 
@@ -385,7 +386,11 @@ app.post('/api/scan-url', async (req, res) => {
 
             return { title, price, mileage, description, url };
         });
+        
+        console.log("Raw Scrape Result:", carData.title, "| Desc length:", carData.description ? carData.description.length : 0);
+
         if (!carData.description || carData.description.length < 20) {
+            console.error(`FAILED TO EXACT DESCRIPTION FOR: ${url}`);
             return res.status(400).json({ success: false, error: 'Failed to extract useful description' });
         }
 

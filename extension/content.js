@@ -2,12 +2,29 @@ let lastHoveredLink = "";
 
 // Track mouse movements to capture AutoTrader's custom link elements
 document.addEventListener('mouseover', (e) => {
-    // Traverse up to find the closest clickable container
-    const linkEl = e.target.closest('a, [data-anchor-overlay="true"], .listing-details-link');
-    if (linkEl) {
-        lastHoveredLink = linkEl.href || (linkEl.getAttribute('href') ? new URL(linkEl.getAttribute('href'), document.baseURI).href : window.location.href);
+    let url = "";
+
+    // 1. Try finding a wrapper anchor
+    let linkEl = e.target.closest('a, [href]');
+    if (linkEl && linkEl.getAttribute('href')) {
+        url = new URL(linkEl.getAttribute('href'), document.baseURI).href;
     } else {
-        lastHoveredLink = window.location.href;
+        // 2. We might be inside a React <div> card without an href wrapper.
+        // Traverse up to find the card container, then look DOWN for the first valid vehicle link.
+        let cardContainer = e.target.closest('div[class*="result-item"], div[class*="listing"], [data-track-type]');
+        if (cardContainer) {
+            let innerLink = cardContainer.querySelector('a[href*="/cars/"], a[href*="/offers/"], a[href*="/item/"], a[href*="/a/"]');
+            if (innerLink && innerLink.getAttribute('href')) {
+                url = new URL(innerLink.getAttribute('href'), document.baseURI).href;
+            }
+        }
+    }
+
+    // Only update if we found a distinct path, otherwise leave it empty so the background script knows the hover failed.
+    if (url && !url.includes('javascript:') && url !== window.location.href) {
+        lastHoveredLink = url;
+    } else {
+        lastHoveredLink = "";
     }
 }, { passive: true });
 
@@ -144,5 +161,67 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse({ received: true });
     } else if (request.action === 'getHoveredLink') {
         sendResponse({ url: lastHoveredLink });
+    } else if (request.action === 'fetchAndScanUrl') {
+        // Authenticated client-side fetch to bypass Bot Detectors
+        fetch(request.url)
+            .then(res => res.text())
+            .then(html => {
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                
+                let description = '';
+                const script = doc.getElementById('__NEXT_DATA__');
+                if (script) {
+                    try {
+                        const data = JSON.parse(script.textContent);
+                        const listingDetails = data?.props?.pageProps?.listingDetails || data?.props?.pageProps?.listing;
+                        if (listingDetails?.description) {
+                            const tmp = document.createElement('div');
+                            tmp.innerHTML = listingDetails.description;
+                            description = tmp.innerText;
+                        }
+                    } catch (err) {}
+                }
+                
+                if (!description) {
+                    const descEl = doc.querySelector('[data-cy="vehicle-description"], [data-testid="vehicle-description"], [data-test="vehicleDescription"], .VehicleDescription_container__rajO2');
+                    if (descEl) description = descEl.innerText;
+                }
+                
+                if (!description) {
+                    const mainEl = doc.querySelector('main');
+                    if (mainEl) description = mainEl.innerText;
+                }
+                
+                if (!description) description = doc.body.innerText;
+                
+                let title = doc.querySelector('h1, h2')?.innerText || doc.title || 'Unknown Car';
+                
+                let price = doc.querySelector('[data-testid="vehicle-price"]')?.innerText || 'Unknown price';
+                let mileage = doc.querySelector('[data-testid="vehicleMileage"]')?.innerText || 'Unknown mileage';
+
+                return fetch('http://localhost:3001/api/scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: request.url.substring(request.url.length - 15),
+                        url: request.url,
+                        title: title.trim(),
+                        price: price.trim(),
+                        mileage: mileage.trim(),
+                        description: description.trim().slice(0, 4000)
+                    })
+                });
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.analysis) {
+                    sendResponse({ success: true, car: data });
+                } else {
+                    sendResponse({ success: false, error: 'Extraction failed' });
+                }
+            })
+            .catch(err => sendResponse({ success: false, error: err.message }));
+            
+        return true; 
     }
 });

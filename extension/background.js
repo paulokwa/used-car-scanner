@@ -16,20 +16,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         return true; // Keep the message channel open for the async response
     } else if (request.action === 'scanUrl') {
-        fetch('http://localhost:3001/api/scan-url', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ url: request.url })
-        })
-            .then(response => response.json())
-            .then(data => sendResponse(data))
-            .catch(error => {
-                console.error('Scan URL proxy error:', error);
-                sendResponse({ success: false, error: error.message });
+        if (sender.tab && sender.tab.id) {
+            chrome.tabs.sendMessage(sender.tab.id, { action: 'fetchAndScanUrl', url: request.url }, (response) => {
+                if (chrome.runtime.lastError || !response) {
+                    sendResponse({ success: false, error: 'Extension error' });
+                } else if (!response.success && response.error) {
+                    sendResponse({ success: false, error: response.error });
+                } else {
+                    sendResponse({ success: true, data: response.car });
+                }
             });
-
+        } else {
+            sendResponse({ success: false, error: 'No active tab to proxy fetch' });
+        }
         return true;
     } else if (request.action === 'updateBadge') {
         chrome.action.setBadgeText({ text: request.text || '' });
@@ -97,20 +96,13 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 function triggerScanProcess(tabId, urlToScan) {
     chrome.tabs.sendMessage(tabId, { action: 'showToast', message: 'Scanning link...' });
             
-    fetch('http://localhost:3001/api/scan-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: urlToScan })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data && data.success) {
-            chrome.tabs.sendMessage(tabId, { action: 'showToast', message: `Scanned! Score: ${data.car.analysis.score}`, success: true });
+    chrome.tabs.sendMessage(tabId, { action: 'fetchAndScanUrl', url: urlToScan }, (response) => {
+        if (chrome.runtime.lastError || !response) {
+            chrome.tabs.sendMessage(tabId, { action: 'showToast', message: `Extension error`, success: false });
+        } else if (response.success && response.car) {
+            chrome.tabs.sendMessage(tabId, { action: 'showToast', message: `Scanned! Score: ${response.car.analysis?.score || 100}`, success: true });
         } else {
             chrome.tabs.sendMessage(tabId, { action: 'showToast', message: `Scan failed`, success: false });
         }
-    })
-    .catch(err => {
-        chrome.tabs.sendMessage(tabId, { action: 'showToast', message: `Error: ${err.message}`, success: false });
     });
 }

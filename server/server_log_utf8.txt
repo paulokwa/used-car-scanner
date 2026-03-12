@@ -1,0 +1,33 @@
+﻿Used Car Scanner server running on http://localhost:3001
+
+
+=== NEW BATCH SCAN REQ ===
+URL: https://www.autotrader.ca/offers/mini-3-door-all4-gasoline-black-b5397230-0430-419b-bdeb-44f27d29e6c9
+Raw Scrape Result: Unknown Car | Desc length: 0
+node : FAILED TO 
+EXACT DESCRIPTION 
+FOR: https://www.autot
+rader.ca/offers/mini-3
+-door-all4-gasoline-bl
+ack-b5397230-0430-419b
+-bdeb-44f27d29e6c9
+At line:1 char:79
++ ... Port 
+3001).OwningProcess 
+-Force; node 
+server.js > 
+server_log.txt 2>&1
++                     
+                 ~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~
+    + CategoryInfo    
+          : NotSpeci  
+  fied: (FAILED TO    
+ EXACT...eb-44f27d    
+29e6c9:String) []    
+, RemoteException
+    + FullyQualifiedE 
+   rrorId : NativeCo  
+  mmandError
+ 
