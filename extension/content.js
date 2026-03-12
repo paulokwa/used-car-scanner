@@ -199,26 +199,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 let price = doc.querySelector('[data-testid="vehicle-price"]')?.innerText || 'Unknown price';
                 let mileage = doc.querySelector('[data-testid="vehicleMileage"]')?.innerText || 'Unknown mileage';
 
-                return fetch('http://localhost:3001/api/scan', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        id: request.url.substring(request.url.length - 15),
-                        url: request.url,
-                        title: title.trim(),
-                        price: price.trim(),
-                        mileage: mileage.trim(),
-                        description: description.trim().slice(0, 4000)
-                    })
+                const payload = {
+                    id: request.url.substring(request.url.length - 15),
+                    url: request.url,
+                    title: title.trim(),
+                    price: price.trim(),
+                    mileage: mileage.trim(),
+                    description: description.trim().slice(0, 4000)
+                };
+
+                chrome.runtime.sendMessage({ action: 'scanCar', payload: payload }, (response) => {
+                    if (chrome.runtime.lastError || !response) {
+                        sendResponse({ success: false, error: 'Extension error' });
+                    } else if (response.success && response.data?.analysis) {
+                        sendResponse({ success: true, car: response.data });
+                    } else {
+                        sendResponse({ success: false, error: response.error || 'Extraction failed' });
+                    }
                 });
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.analysis) {
-                    sendResponse({ success: true, car: data });
-                } else {
-                    sendResponse({ success: false, error: 'Extraction failed' });
-                }
             })
             .catch(err => sendResponse({ success: false, error: err.message }));
             
